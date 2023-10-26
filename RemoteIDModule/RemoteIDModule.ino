@@ -17,6 +17,7 @@
 #include "WiFi_TX.h"
 #include "BLE_TX.h"
 #include <esp_wifi.h>
+#include <esp_event_loop.h>
 #include <WiFi.h>
 #include "parameters.h"
 #include "webinterface.h"
@@ -24,6 +25,98 @@
 #include <esp_ota_ops.h>
 #include "efuse.h"
 #include "led.h"
+
+BLEScan *BLE_scan;
+BLEUUID  service_uuid;
+
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+  
+    void onResult(BLEAdvertisedDevice device) {
+
+      int                   i, k, len;
+      char                  text[128];
+      uint8_t              *payload, *odid, *mac;
+      struct id_data       *UAV;
+      ODID_BasicID_data     odid_basic;
+      ODID_Location_data    odid_location;
+      ODID_System_data      odid_system;
+      ODID_OperatorID_data  odid_operator;
+
+      text[0] = i = k = 0;
+      
+      //
+      
+      if ((len = device.getPayloadLength()) > 0) {
+
+        BLEAddress ble_address = device.getAddress();
+        mac                    = (uint8_t *) ble_address.getNative();
+
+//      BLEUUID BLE_UUID = device.getServiceUUID(); // crashes program
+
+        payload = device.getPayload();
+        odid    = &payload[6];
+#if 0
+        for (i = 0, k = 0; i < ESP_BD_ADDR_LEN; ++i, k += 3) {
+
+          sprintf(&text[k],"%02x ",mac[i]);
+        }
+
+        Serial.printf("%s\r\n",text);
+
+        dump_frame(payload,payload[0]);      
+#endif
+
+        if ((payload[1] == 0x16)&&
+            (payload[2] == 0xfa)&&
+            (payload[3] == 0xff)&&
+            (payload[4] == 0x0d)){
+
+          UAV            = next_uav(mac);
+          UAV->last_seen = millis();
+          UAV->rssi      = device.getRSSI();
+          UAV->flag      = 1;
+
+          memcpy(UAV->mac,mac,6);
+
+          switch (odid[0] & 0xf0) {
+
+          case 0x00: // basic
+
+            decodeBasicIDMessage(&odid_basic,(ODID_BasicID_encoded *) odid);
+            break;
+
+          case 0x10: // location
+          
+            decodeLocationMessage(&odid_location,(ODID_Location_encoded *) odid);
+            UAV->lat_d        = odid_location.Latitude;
+            UAV->long_d       = odid_location.Longitude;
+            UAV->altitude_msl = (int) odid_location.AltitudeGeo;
+            UAV->height_agl   = (int) odid_location.Height;
+            UAV->speed        = (int) odid_location.SpeedHorizontal;
+            UAV->heading      = (int) odid_location.Direction;
+            break;
+
+          case 0x40: // system
+
+            decodeSystemMessage(&odid_system,(ODID_System_encoded *) odid);
+            UAV->base_lat_d   = odid_system.OperatorLatitude;
+            UAV->base_long_d  = odid_system.OperatorLongitude;
+            break;
+
+          case 0x50: // operator
+
+            decodeOperatorIDMessage(&odid_operator,(ODID_OperatorID_encoded *) odid);
+            strncpy((char *) UAV->op_id,(char *) odid_operator.OperatorId,ODID_ID_SIZE);
+            break;
+          }
+
+          ++odid_ble;
+        }
+      }
+
+      return;
+    }
+};
 
 
 #if AP_DRONECAN_ENABLED
@@ -123,6 +216,13 @@ void setup()
     esp_log_level_set("*", ESP_LOG_DEBUG);
 
     esp_ota_mark_app_valid_cancel_rollback();
+    service_uuid = BLEUUID("0000fffa-0000-1000-8000-00805f9b34fb");
+    BLE_scan     = BLEDevice::getScan();
+
+    BLE_scan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    BLE_scan->setActiveScan(true); 
+    BLE_scan->setInterval(100);
+    BLE_scan->setWindow(99); 
 }
 
 #define IMIN(x,y) ((x)<(y)?(x):(y))
