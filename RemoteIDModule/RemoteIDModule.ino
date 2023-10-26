@@ -18,6 +18,12 @@
 #include "BLE_TX.h"
 #include <esp_wifi.h>
 #include <esp_event_loop.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEAddress.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
 #include <WiFi.h>
 #include "parameters.h"
 #include "webinterface.h"
