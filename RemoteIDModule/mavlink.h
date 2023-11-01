@@ -15,9 +15,11 @@ public:
     void init(void) override;
     void update(void) override;
 
+    // Was private
+    mavlink_channel_t chan;
+
 private:
     HardwareSerial &serial;
-    mavlink_channel_t chan;
     uint32_t last_hb_ms;
     uint32_t last_hb_warn_ms;
     uint32_t param_request_last_ms;

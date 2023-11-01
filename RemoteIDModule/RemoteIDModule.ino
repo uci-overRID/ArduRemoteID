@@ -35,7 +35,11 @@
 BLEScan *BLE_scan;
 BLEUUID  service_uuid;
 
+#define MAV_UAVS 8
+volatile struct id_data   uavs[MAX_UAVS + 1];
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+
+    MyAdvertisedDeviceCallbacks(MAVLinkSerial* _mavlink) : mavlink(_mavlink) {}
   
     void onResult(BLEAdvertisedDevice device) {
 
@@ -100,6 +104,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             UAV->height_agl   = (int) odid_location.Height;
             UAV->speed        = (int) odid_location.SpeedHorizontal;
             UAV->heading      = (int) odid_location.Direction;
+
+            // mavlink_msg_uav_found_send(this->mavlink->chan, , UAV->lat_d, UAV->long_d, UAV->altitude_msl);
+
             break;
 
           case 0x40: // system
@@ -122,6 +129,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
       return;
     }
+private:
+    MAVLinkSerial* mavlink;
 };
 
 
@@ -225,7 +234,7 @@ void setup()
     service_uuid = BLEUUID("0000fffa-0000-1000-8000-00805f9b34fb");
     BLE_scan     = BLEDevice::getScan();
 
-    BLE_scan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    BLE_scan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(mavlink1));
     BLE_scan->setActiveScan(true); 
     BLE_scan->setInterval(100);
     BLE_scan->setWindow(99); 
@@ -546,6 +555,19 @@ void loop()
         now_ms - last_update_bt4_ms > (1000.0f/bt4_states)/g.bt4_rate) {
         last_update_bt4_ms = now_ms;
         ble.transmit_legacy(UAS_data);
+    }
+
+    for (i = 0; i < MAX_UAVS; ++i) {
+        if ((uavs[i].last_seen) &&
+            ((msecs - uavs[i].last_seen) > 300000L)) {
+
+            uavs[i].last_seen = 0;
+            uavs[i].mac[0]    = 0;
+        }
+
+        if (uavs[i].flag) {
+            mavlink_msg_uav_found_send(this->mavlink->chan, , UAV->lat_d, UAV->long_d, UAV->altitude_msl); 
+        }
     }
 
     // sleep for a bit for power saving
