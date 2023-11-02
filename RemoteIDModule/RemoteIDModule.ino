@@ -35,6 +35,15 @@
 BLEScan *BLE_scan;
 BLEUUID  service_uuid;
 
+struct id_data {int       flag;
+                uint8_t   mac[6];
+                uint32_t  last_seen;
+                char      op_id[ID_SIZE];
+                char      uav_id[ID_SIZE];
+                double    lat_d, long_d, base_lat_d, base_long_d;
+                int       altitude_msl, height_agl, speed, heading, rssi;
+};
+
 #define MAV_UAVS 8
 volatile struct id_data   uavs[MAX_UAVS + 1];
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
