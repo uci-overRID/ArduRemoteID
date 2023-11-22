@@ -35,6 +35,11 @@
 BLEScan *BLE_scan;
 BLEUUID  service_uuid;
 
+volatile unsigned int callback_counter = 0, odid_wifi = 0, odid_ble = 0;
+
+#define ID_SIZE 21
+
+
 struct id_data {int       flag;
                 uint8_t   mac[6];
                 uint32_t  last_seen;
@@ -44,10 +49,34 @@ struct id_data {int       flag;
                 int       altitude_msl, height_agl, speed, heading, rssi;
 };
 
-#define MAV_UAVS 8
+#define MAX_UAVS 8
 volatile struct id_data   uavs[MAX_UAVS + 1];
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
+static id_data* next_uav(uint8_t*);
+
+id_data* next_uav(uint8_t* mac) {
+  id_data* UAV = nullptr;
+  for(int i = 0;i<MAX_UAVS;i++){
+    if(memcpy((void*) uavs[i].mac, mac, 6) == 0) {
+      UAV = (id_data*) &uavs[i];
+    }
+    if(!UAV) {
+      for(i = 0;i<MAX_UAVS;++i) {
+        if(!uavs[i].mac[0]) {
+          UAV = (id_data*) &uavs[i];
+          break;
+        }
+      }
+    }
+  }
+  if(!UAV) {
+    UAV = (id_data*) &uavs[MAX_UAVS-1];
+  }
+  return UAV;
+}
+
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+public:
     MyAdvertisedDeviceCallbacks(MAVLinkSerial* _mavlink) : mavlink(_mavlink) {}
   
     void onResult(BLEAdvertisedDevice device) {
@@ -243,7 +272,7 @@ void setup()
     service_uuid = BLEUUID("0000fffa-0000-1000-8000-00805f9b34fb");
     BLE_scan     = BLEDevice::getScan();
 
-    BLE_scan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(mavlink1));
+    BLE_scan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(&mavlink1));
     BLE_scan->setActiveScan(true); 
     BLE_scan->setInterval(100);
     BLE_scan->setWindow(99); 
@@ -472,6 +501,8 @@ static uint8_t loop_counter = 0;
 
 void loop()
 {
+  uint32_t msecs, secs;
+  msecs = millis();
 #if AP_MAVLINK_ENABLED
     mavlink1.update();
     mavlink2.update();
@@ -566,7 +597,7 @@ void loop()
         ble.transmit_legacy(UAS_data);
     }
 
-    for (i = 0; i < MAX_UAVS; ++i) {
+    for (int i = 0; i < MAX_UAVS; ++i) {
         if ((uavs[i].last_seen) &&
             ((msecs - uavs[i].last_seen) > 300000L)) {
 
@@ -575,7 +606,8 @@ void loop()
         }
 
         if (uavs[i].flag) {
-            mavlink_msg_uav_found_send(this->mavlink->chan, , UAV->lat_d, UAV->long_d, UAV->altitude_msl); 
+          volatile id_data* UAV = uavs+i;
+          mavlink_msg_uav_found_send(mavlink1.chan, UAV->lat_d, UAV->long_d, UAV->altitude_msl); 
         }
     }
 
